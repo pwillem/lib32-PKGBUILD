@@ -1,0 +1,32 @@
+# Maintainer: Stefan Tatschner <stefan@sevenbyte.org>
+
+_pkgbasename=libsocketcan
+pkgname=lib32-${_pkgbasename}
+pkgver=0.0.10
+pkgrel=1
+pkgdesc="Userspace library for socketCAN"
+arch=('x86_64')
+url="https://git.pengutronix.de/cgit/tools/libsocketcan"
+license=('LGPL')
+makedepends=("gcc-multilib")
+source=("http://www.pengutronix.de/software/libsocketcan/download/libsocketcan-${pkgver}.tar.bz2")
+sha256sums=('3c83e386c3fa7673141658472ae0b0e2a9f5849bf52fd9f7b22b04fd98ec7b6e')
+
+build() {
+  cd $srcdir/${_pkgbasename}-${pkgver}
+
+  export CC='gcc -m32'
+  export PKG_CONFIG_PATH=/usr/lib32/pkgconfig
+
+  ./configure --prefix=/usr --libdir=/usr/lib32
+  make
+}
+
+package() {
+  cd $srcdir/${_pkgbasename}-$pkgver
+
+  make DESTDIR=$pkgdir install
+
+  # Clean up lib32 package
+  rm -rf "${pkgdir}"/usr/{include,share}
+}
