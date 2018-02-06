@@ -28,5 +28,5 @@ package() {
   make DESTDIR=$pkgdir install
 
   # Clean up lib32 package
-  rm -rf "${pkgdir}"/usr/{include,share}
+  rm -rf "${pkgdir}"/usr/share
 }
