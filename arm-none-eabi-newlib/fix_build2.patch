@@ -1,0 +1,28 @@
+From b7e0f286a2ecab3b687ec9b3f95f5a88b9f85310 Mon Sep 17 00:00:00 2001
+From: Orlando Arias <oarias@knights.ucf.edu>
+Date: Fri, 19 Jan 2018 11:45:01 -0500
+Subject: [PATCH] Fix syntax error in exit.c
+
+This patch fixes a syntax error in exit.c that was introduced during the
+ANSI-fication of newlib. The patch fixes a compile-time issue that arises when
+newlib is configured with the --enable-lite-exit feature.
+---
+ newlib/libc/stdlib/exit.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/newlib/libc/stdlib/exit.c b/newlib/libc/stdlib/exit.c
+index 95108ad..3e61891 100644
+--- a/newlib/libc/stdlib/exit.c
++++ b/newlib/libc/stdlib/exit.c
+@@ -54,7 +54,7 @@ exit (int code)
+ {
+ #ifdef _LITE_EXIT
+   /* Refer to comments in __atexit.c for more details of lite exit.  */
+-  void __call_exitprocs (int, void *)) __attribute__((weak);
++  void __call_exitprocs (int, void *) __attribute__((weak));
+   if (__call_exitprocs)
+ #endif
+     __call_exitprocs (code, NULL);
+-- 
+2.9.3
+

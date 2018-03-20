@@ -1,0 +1,192 @@
+From b8272e3b8df8337744423e4dd23e727cf963d528 Mon Sep 17 00:00:00 2001
+From: Jon Beniston <jon@beniston.com>
+Date: Thu, 1 Feb 2018 09:06:00 +0000
+Subject: [PATCH] Fix vprintf and vfscanf for GCC PR 14577
+
+---
+ newlib/libc/stdio/nano-vfprintf.c | 29 +++++++++++------------------
+ newlib/libc/stdio/nano-vfscanf.c  | 28 +++++++++++++---------------
+ 2 files changed, 24 insertions(+), 33 deletions(-)
+
+diff --git a/newlib/libc/stdio/nano-vfprintf.c b/newlib/libc/stdio/nano-vfprintf.c
+index ed7316a..bc7ed07 100644
+--- a/newlib/libc/stdio/nano-vfprintf.c
++++ b/newlib/libc/stdio/nano-vfprintf.c
+@@ -168,16 +168,6 @@ static char *rcsid = "$Id$";
+ #include "vfieeefp.h"
+ #include "nano-vfprintf_local.h"
+ 
+-
+-/* GCC PR 14577 at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=14557 */
+-#if __STDC_VERSION__ >= 201112L
+-#define va_ptr(ap) _Generic(&(ap), va_list *: &(ap), default: (va_list *)(ap))
+-#elif __GNUC__ >= 4
+-#define va_ptr(ap) __builtin_choose_expr(__builtin_types_compatible_p(__typeof__(&(ap)), va_list *), &(ap), (va_list *)(ap))
+-#else
+-#define va_ptr(ap) (sizeof(ap) == sizeof(va_list) ? (va_list *)&(ap) : (va_list *)(ap))
+-#endif
+-
+ /* The __ssputs_r function is shared between all versions of vfprintf
+    and vfwprintf.  */
+ #ifdef STRING_ONLY
+@@ -485,6 +475,7 @@ _VFPRINTF_R (struct _reent *data,
+   register char *cp;	/* Handy char pointer (short term usage).  */
+   const char *flag_chars;
+   struct _prt_data_t prt_data;	/* All data for decoding format string.  */
++  va_list ap_copy;
+ 
+   /* Output function pointer.  */
+   int (*pfunc)(struct _reent *, FILE *, const char *, size_t len);
+@@ -522,6 +513,9 @@ _VFPRINTF_R (struct _reent *data,
+   prt_data.blank = ' ';
+   prt_data.zero = '0';
+ 
++  /* GCC PR 14577 at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=14557 */
++  va_copy (ap_copy, ap);
++
+   /* Scan the format for conversions (`%' character).  */
+   for (;;)
+     {
+@@ -577,7 +571,7 @@ _VFPRINTF_R (struct _reent *data,
+ 	   *	-- ANSI X3J11
+ 	   * They don't exclude field widths read from args.
+ 	   */
+-	  prt_data.width = GET_ARG (n, ap, int);
++	  prt_data.width = GET_ARG (n, ap_copy, int);
+ 	  if (prt_data.width < 0)
+ 	    {
+ 	      prt_data.width = -prt_data.width;
+@@ -598,7 +592,7 @@ _VFPRINTF_R (struct _reent *data,
+ 	  if (*fmt == '*')
+ 	    {
+ 	      fmt++;
+-	      prt_data.prec = GET_ARG (n, ap, int);
++	      prt_data.prec = GET_ARG (n, ap_copy, int);
+ 	      if (prt_data.prec < 0)
+ 		prt_data.prec = -1;
+ 	    }
+@@ -630,18 +624,16 @@ _VFPRINTF_R (struct _reent *data,
+ 	  if (_printf_float == NULL)
+ 	    {
+ 	      if (prt_data.flags & LONGDBL)
+-		GET_ARG (N, ap, _LONG_DOUBLE);
++		GET_ARG (N, ap_copy, _LONG_DOUBLE);
+ 	      else
+-		GET_ARG (N, ap, double);
++		GET_ARG (N, ap_copy, double);
+ 	    }
+ 	  else
+-	    {
+-	      n = _printf_float (data, &prt_data, fp, pfunc, va_ptr(ap));
+-	    }
++            n = _printf_float (data, &prt_data, fp, pfunc, &ap_copy);
+ 	}
+       else
+ #endif
+-	n = _printf_i (data, &prt_data, fp, pfunc, va_ptr(ap));
++	n = _printf_i (data, &prt_data, fp, pfunc, &ap_copy);
+ 
+       if (n == -1)
+ 	goto error;
+@@ -654,6 +646,7 @@ error:
+ #ifndef STRING_ONLY
+   _newlib_flockfile_end (fp);
+ #endif
++  va_end (ap_copy);
+   return (__sferror (fp) ? EOF : prt_data.ret);
+ }
+ 
+diff --git a/newlib/libc/stdio/nano-vfscanf.c b/newlib/libc/stdio/nano-vfscanf.c
+index 5579cb0..97810b7 100644
+--- a/newlib/libc/stdio/nano-vfscanf.c
++++ b/newlib/libc/stdio/nano-vfscanf.c
+@@ -119,15 +119,6 @@ Supporting OS subroutines required:
+ #include "../stdlib/local.h"
+ #include "nano-vfscanf_local.h"
+ 
+-/* GCC PR 14577 at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=14557 */
+-#if __STDC_VERSION__ >= 201112L
+-#define va_ptr(ap) _Generic(&(ap), va_list *: &(ap), default: (va_list *)(ap))
+-#elif __GNUC__ >= 4
+-#define va_ptr(ap) __builtin_choose_expr(__builtin_types_compatible_p(__typeof__(&(ap)), va_list *), &(ap), (va_list *)(ap))
+-#else
+-#define va_ptr(ap) (sizeof(ap) == sizeof(va_list) ? (va_list *)&(ap) : (va_list *)(ap))
+-#endif
+-
+ #define VFSCANF vfscanf
+ #define _VFSCANF_R _vfscanf_r
+ #define __SVFSCANF __svfscanf
+@@ -272,6 +263,7 @@ __SVFSCANF_R (struct _reent *rptr,
+   register int c;		/* Character from format, or conversion.  */
+   register char *p;		/* Points into all kinds of strings.  */
+   char ccltab[256];		/* Character class table for %[...].  */
++  va_list ap_copy;
+ 
+   int ret;
+   char *cp;
+@@ -287,6 +279,9 @@ __SVFSCANF_R (struct _reent *rptr,
+   scan_data.pfn_ungetc = _ungetc_r;
+   scan_data.pfn_refill = __srefill_r;
+ 
++  /* GCC PR 14577 at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=14557 */
++  va_copy (ap_copy, ap);
++
+   for (;;)
+     {
+       if (*fmt == 0)
+@@ -379,17 +374,18 @@ __SVFSCANF_R (struct _reent *rptr,
+ 	    continue;
+ 
+ 	  if (scan_data.flags & SHORT)
+-	    *GET_ARG (N, ap, short *) = scan_data.nread;
++	    *GET_ARG (N, ap_copy, short *) = scan_data.nread;
+ 	  else if (scan_data.flags & LONG)
+-	    *GET_ARG (N, ap, long *) = scan_data.nread;
++	    *GET_ARG (N, ap_copy, long *) = scan_data.nread;
+ 	  else
+-	    *GET_ARG (N, ap, int *) = scan_data.nread;
++	    *GET_ARG (N, ap_copy, int *) = scan_data.nread;
+ 
+ 	  continue;
+ 
+ 	/* Disgusting backwards compatibility hacks.	XXX.  */
+ 	case '\0':		/* compat.  */
+ 	  _newlib_flockfile_exit (fp);
++	  va_end (ap_copy);
+ 	  return EOF;
+ 
+ #ifdef FLOATING_POINT
+@@ -427,12 +423,12 @@ __SVFSCANF_R (struct _reent *rptr,
+ 	}
+       ret = 0;
+       if (scan_data.code < CT_INT)
+-	ret = _scanf_chars (rptr, &scan_data, fp, va_ptr(ap));
++	ret = _scanf_chars (rptr, &scan_data, fp, &ap_copy);
+       else if (scan_data.code < CT_FLOAT)
+-	ret = _scanf_i (rptr, &scan_data, fp, va_ptr(ap));
++	ret = _scanf_i (rptr, &scan_data, fp, &ap_copy);
+ #ifdef FLOATING_POINT
+       else if (_scanf_float)
+-	ret = _scanf_float (rptr, &scan_data, fp, va_ptr(ap));
++	ret = _scanf_float (rptr, &scan_data, fp, &ap_copy);
+ #endif
+ 
+       if (ret == MATCH_FAILURE)
+@@ -446,12 +442,14 @@ input_failure:
+      invalid format string), return EOF if no matches yet, else number
+      of matches made prior to failure.  */
+   _newlib_flockfile_exit (fp);
++  va_end (ap_copy);
+   return scan_data.nassigned && !(fp->_flags & __SERR) ? scan_data.nassigned
+ 						       : EOF;
+ match_failure:
+ all_done:
+   /* Return number of matches, which can be 0 on match failure.  */
+   _newlib_flockfile_end (fp);
++  va_end (ap_copy);
+   return scan_data.nassigned;
+ }
+ 
+-- 
+2.9.3
+
